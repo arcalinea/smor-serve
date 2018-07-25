@@ -22,8 +22,13 @@ type MerkleListNode struct {
 }
 
 type childLink struct {
-	Beg  uint64
-	End  uint64
+	// Beg is the lowest timestamp on any post in this child
+	Beg uint64
+
+	// End is the highest timestamp on any post in this child
+	End uint64
+
+	// Node is the hash link to the child object
 	Node *cid.Cid
 }
 
@@ -44,7 +49,16 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 	}
 
 	// pass it off to the recursive function (also pass our 'blockstore' so it can persist state)
-	return ml.root.insertPost(ml.bs, p.CreatedAt, c)
+	extra, err := ml.root.insertPost(ml.bs, p.CreatedAt, c)
+	if err != nil {
+		return err
+	}
+
+	if extra != nil {
+		panic("TODO: handle splitting")
+	}
+
+	return nil
 }
 
 func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
@@ -63,12 +77,13 @@ func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
 	return nd.Cid(), nil
 }
 
-func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
+func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*cid.Cid, error) {
 	// Base case, no child nodes, insert in this node
 	if ml.Depth == 0 {
 
 		// iterate from the end to the front, we expect most 'inserts' to be 'append'
-		for i := len(ml.Posts) - 1; i >= 0; i-- {
+		var i int
+		for i = len(ml.Posts) - 1; i >= 0; i-- {
 			sm, err := ml.getPost(bs, i)
 			if err != nil {
 				return nil, err
@@ -79,12 +94,14 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 
 				// snippet below from golang slice tricks
 				ml.Posts = append(ml.Posts[:i], append([]*cid.Cid{c}, ml.Posts[i:]...)...)
-				return nil, nil
+				break
 			}
 		}
 
-		// if we make it here, our post occurs before every other post, insert it to the front
-		ml.Posts = append([]*cid.Cid{c}, ml.Posts...)
+		if i == -1 {
+			// if we make it here, our post occurs before every other post, insert it to the front
+			ml.Posts = append([]*cid.Cid{c}, ml.Posts...)
+		}
 
 		// now check if we need to split
 		if len(ml.Posts) >= postsPerNode {
@@ -101,7 +118,11 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			extra := ml.Posts[postsPerNode:]
 			ml.Posts = ml.Posts[:postsPerNode]
 
-			return &MerkleListNode{Posts: extra}, nil
+			if len(extra) > 1 {
+				panic("don't handle this case yet")
+			}
+
+			return extra[0], nil
 		}
 
 		return nil, nil
@@ -110,11 +131,28 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 	// recursive case, find the child it belongs in
 	for i := len(ml.Children) - 1; i >= 0; i-- {
 		if time >= ml.Children[i].Beg || i == 0 {
-			return ml.mutateChild(bs, i, func(cmln *MerkleListNode) error {
-				return cmln.insertPost(bs, time, c)
+			var extra *cid.Cid
+			err := ml.mutateChild(bs, i, func(cmln *MerkleListNode) error {
+				ex, err := cmln.insertPost(bs, time, c)
+				if err != nil {
+					return err
+				}
+
+				extra = ex
+				return nil
 			})
+			if err != nil {
+				return nil, err
+			}
+
+			if extra != nil {
+				panic("TODO: handle splitting")
+			}
+
+			return nil, nil
 		}
 	}
+	panic("shouldnt ever get here...")
 }
 
 // mutateChild loads the given child from its hash, applys the given function
