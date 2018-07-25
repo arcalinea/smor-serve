@@ -26,7 +26,7 @@ type SmorServ struct {
 func (ss *SmorServ) forEachItem(user string, f func(*Smor) error) error {
 	qrange := &util.Range{
 		Start: []byte(user + "/"),
-		Limit: []byte(user + "0"),
+		Limit: []byte(user + "0"), // "0" is the next byte after "/"
 	}
 	iter := ss.db.NewIterator(qrange, nil)
 	defer iter.Release()
