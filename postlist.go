@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"encoding/json"
+	
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
@@ -31,6 +34,10 @@ type childLink struct {
 	// Node is the hash link to the child object
 	Node *cid.Cid
 }
+// 
+// func (ml *MerkleList) RetrievePost(cid *childLink.Node) error {
+// 
+// }
 
 // InsertPost inserts the given Smor in order into the merklelist
 func (ml *MerkleList) InsertPost(p *Smor) error {
@@ -50,15 +57,32 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 
 	// pass it off to the recursive function (also pass our 'blockstore' so it can persist state)
 	extra, err := ml.root.insertPost(ml.bs, p.CreatedAt, c)
+	fmt.Println("Got extra back,", extra)
 	if err != nil {
 		return err
 	}
 
 	if extra != nil {
+		fmt.Println("HANDLE SPLIT")
+		ml.splitNode(ml.bs, extra)
 		panic("TODO: handle splitting")
 	}
 
 	return nil
+}
+
+func (ml *MerkleList) splitNode(bs blockstore.Blockstore, c *cid.Cid) {
+	sm, err := ml.getPost(c); 
+	fmt.Println("Post from getPost", sm)
+	if err != nil {
+		panic(err)
+	}
+	
+	val, err := json.Marshal(sm)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Val", val)
 }
 
 func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
@@ -78,13 +102,14 @@ func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
 }
 
 func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*cid.Cid, error) {
+	fmt.Println("C", c)
 	// Base case, no child nodes, insert in this node
 	if ml.Depth == 0 {
 
 		// iterate from the end to the front, we expect most 'inserts' to be 'append'
 		var i int
 		for i = len(ml.Posts) - 1; i >= 0; i-- {
-			sm, err := ml.getPost(bs, i)
+			sm, err := ml.getPostByIndex(bs, i)
 			if err != nil {
 				return nil, err
 			}
@@ -94,6 +119,7 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 
 				// snippet below from golang slice tricks
 				ml.Posts = append(ml.Posts[:i], append([]*cid.Cid{c}, ml.Posts[i:]...)...)
+				fmt.Println(ml.Posts)
 				break
 			}
 		}
@@ -104,7 +130,8 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 		}
 
 		// now check if we need to split
-		if len(ml.Posts) >= postsPerNode {
+		if len(ml.Posts) > postsPerNode {
+			fmt.Println("Splitting node...")
 			/* split this node into two
 			Go from:
 			  [ ............... ]
@@ -116,12 +143,14 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			*/
 
 			extra := ml.Posts[postsPerNode:]
+			fmt.Println("EXTRA", extra)
 			ml.Posts = ml.Posts[:postsPerNode]
+			fmt.Println("ML posts", ml.Posts)
 
 			if len(extra) > 1 {
 				panic("don't handle this case yet")
 			}
-
+			
 			return extra[0], nil
 		}
 
@@ -186,13 +215,27 @@ func (ml *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*M
 	return nil
 }
 
-func (ml *MerkleListNode) getPost(bs blockstore.Blockstore, i int) (*Smor, error) {
-	// read the data from the datastore
-	blk, err := bs.Get(ml.Posts[i])
+func (ml *MerkleList) getPost(c *cid.Cid) (*Smor, error) {
+	blk, err := ml.bs.Get(c)
 	if err != nil {
 		return nil, err
 	}
+	// unmarshal it into a smor object
+	var out Smor
+	if err := cbor.DecodeInto(blk.RawData(), &out); err != nil {
+		return nil, err
+	}
 
+	return &out, nil
+}
+
+func (ml *MerkleListNode) getPostByIndex(bs blockstore.Blockstore, i int) (*Smor, error) {
+	// read the data from the datastore
+	blk, err := bs.Get(ml.Posts[i])
+	if err != nil {
+			return nil, err
+	}
+	
 	// unmarshal it into a smor object
 	var smor Smor
 	if err := cbor.DecodeInto(blk.RawData(), &smor); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"math/rand"
 	"testing"
+	"fmt"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-ipfs-blockstore"
@@ -30,13 +31,14 @@ func TestBasicPostlist(t *testing.T) {
 
 	// setup a few random posts to use for test data
 	var posts []*Smor
-	for i := 0; i < 5; i++ {
+	for i := 1; i < 18; i++ {
 		posts = append(posts, getRandomSmor(uint64(i)))
 	}
 
 	for _, p := range posts {
 		if err := ml.InsertPost(p); err != nil {
-			t.Fatal(err)
+			t.Fatal("Failed to split node", err)
 		}
+		fmt.Println(ml.root)
 	}
 }
