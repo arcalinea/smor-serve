@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/labstack/echo"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -20,9 +21,9 @@ type Smor struct {
 }
 
 type User struct {
-	Pubkey    string `json:"pubkey"`
-	CreatedAt uint64 `json:"created_at"`
-	Username  string `json:"username"`
+	Pubkey	   string      `json:"pubkey"`
+	CreatedAt  uint64			 `json:"created_at"`
+	Username 	 string			 `json:"username"`
 }
 
 type SmorServ struct {
@@ -68,22 +69,47 @@ func (ss *SmorServ) getFeed(c echo.Context) error {
 	return c.JSON(200, out)
 }
 
+func (ss *SmorServ) getPost(c echo.Context) error {
+	user := c.Param("user")
+	timestamp := c.Param("timestamp")
+	
+	fmt.Println("Getting post")
+	
+	createdAt, err := strconv.Atoi(timestamp)
+	if err != nil {
+		return err
+	}
+
+	out := Smor{}
+	data, err := ss.db.Get([]byte(fmt.Sprintf("%s/%d", user, createdAt)), nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(data)
+	
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+
+	return c.JSON(200, out)	
+}
+
 func (ss *SmorServ) getUser(c echo.Context) error {
 	username := c.Param("username")
 	fmt.Println("Username", username)
-
+	
 	out := User{}
 	data, err := ss.db.Get([]byte(username), nil)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(data)
-
+	
 	if err := json.Unmarshal(data, &out); err != nil {
 		return err
 	}
 
-	return c.JSON(200, out)
+	return c.JSON(200, out)	
 }
 
 func (ss *SmorServ) postFeedItems(c echo.Context) error {
@@ -111,12 +137,12 @@ func (ss *SmorServ) postFeedItems(c echo.Context) error {
 }
 
 func (ss *SmorServ) postNewUser(c echo.Context) error {
-	var newUser User
+	var newUser User 
 	if err := json.NewDecoder(c.Request().Body).Decode(&newUser); err != nil {
 		return err
 	}
 	fmt.Println("NEW USER", newUser)
-
+	
 	b := &leveldb.Batch{}
 	val, err := json.Marshal(newUser)
 	if err != nil {
@@ -129,6 +155,7 @@ func (ss *SmorServ) postNewUser(c echo.Context) error {
 
 	return ss.db.Write(b, nil)
 }
+
 
 func main() {
 	db, err := leveldb.OpenFile("smor.db", nil)
@@ -144,9 +171,9 @@ func main() {
 
 	e.POST("/user/new", ss.postNewUser)
 	e.GET("/user/:username", ss.getUser)
-
-	e.GET("/post/:timestamp", ss.getPost)
-
+	
+	e.GET("/post/:user/:timestamp", ss.getPost)
+	
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		fmt.Println("ERROR: ", err)
 		c.JSON(500, nil)
