@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 
 	"github.com/ipfs/go-cid"
@@ -20,7 +20,7 @@ type MerkleList struct {
 
 type MerkleListNode struct {
 	Posts    []*cid.Cid
-	Children []childLink
+	Children []*childLink
 	Depth    int
 }
 
@@ -34,11 +34,6 @@ type childLink struct {
 	// Node is the hash link to the child object
 	Node *cid.Cid
 }
-
-//
-// func (ml *MerkleList) RetrievePost(cid *childLink.Node) error {
-//
-// }
 
 // InsertPost inserts the given Smor in order into the merklelist
 func (ml *MerkleList) InsertPost(p *Smor) error {
@@ -66,28 +61,62 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 	if extra != nil {
 		fmt.Println("HANDLE SPLIT")
 		ml.splitNode(extra)
-		panic("TODO: handle splitting")
+		// panic("TODO: handle splitting")
 	}
 
 	return nil
 }
 
-func (ml *MerkleList) splitNode(mln *MerkleListNode) {
+func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
 	if len(mln.Posts) > 0 {
-		sm, err := ml.getPost(c)
+		sm, err := ml.getPost(mln.Posts[0])
 		fmt.Println("Post from getPost", sm)
 		if err != nil {
 			panic(err)
 		}
-
-		val, err := json.Marshal(sm)
+		
+		rootCid, err := putNode(ml.bs, ml.root)
 		if err != nil {
-			panic(err)
+			return err
 		}
-		fmt.Println("Val", val)
+		
+		mlnCid, err := putNode(ml.bs, mln)
+		if err != nil {
+			return err
+		}
+		
+		ml.root = &MerkleListNode{
+			Children: []*childLink{
+				&childLink{
+					Beg: 0, // need func that given merkle list node, returns beginning and end
+					End: 0,
+					Node: rootCid,
+				},
+				&childLink{
+					Beg: sm.CreatedAt,
+					End: sm.CreatedAt,
+					Node: mlnCid, 
+				},
+			},
+		}
+		
+		return nil
 	} else {
 		panic("do the different thing")
 	}
+}
+
+func putNode(bs blockstore.Blockstore, mln *MerkleListNode) (*cid.Cid, error) {
+	node, err := cbor.WrapObject(mln, mh.SHA2_256, -1)
+	if err != nil {
+		return nil, err
+	}
+	
+	if err := bs.Put(node); err != nil {
+		return nil, err
+	}
+	
+	return node.Cid(), nil
 }
 
 func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
