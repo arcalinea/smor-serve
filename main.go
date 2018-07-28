@@ -68,12 +68,23 @@ func (ss *SmorServ) getFeed(c echo.Context) error {
 	return c.JSON(200, out)
 }
 
-// func (ss *SmorServe) getUser(c echo.Context) error {
-// 	username := c.Param("username")
-// 
-// 	out := User
-// 
-// }
+func (ss *SmorServ) getUser(c echo.Context) error {
+	username := c.Param("username")
+	fmt.Println("Username", username)
+	
+	out := User{}
+	data, err := ss.db.Get([]byte(username), nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(data)
+	
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+
+	return c.JSON(200, out)	
+}
 
 func (ss *SmorServ) postFeedItems(c echo.Context) error {
 	user := c.Param("user")
@@ -113,10 +124,8 @@ func (ss *SmorServ) postNewUser(c echo.Context) error {
 	}
 	fmt.Println("Json val", val)
 
-	// TODO: this is using the unix timestamp as the key. This means we will run into issues
-	// if two items have the same timestamp. Really, we just want a collection of items, sorted
-	// on their timestamp.
-	b.Put([]byte(fmt.Sprintf("%s/%d", newUser.Username, newUser.CreatedAt)), val)
+	// TODO: this is using the username as the key
+	b.Put([]byte(fmt.Sprintf(newUser.Username)), val)
 
 	return ss.db.Write(b, nil)
 }
@@ -135,7 +144,7 @@ func main() {
 	e.POST("/feed/:user", ss.postFeedItems)
 
 	e.POST("/user/new", ss.postNewUser)
-	// e.GET("user/:username", ss.getUser)
+	e.GET("/user/:username", ss.getUser)
 	
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		fmt.Println("ERROR: ", err)
