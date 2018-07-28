@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"encoding/json"
-	
+	"fmt"
+
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
@@ -34,9 +34,10 @@ type childLink struct {
 	// Node is the hash link to the child object
 	Node *cid.Cid
 }
-// 
+
+//
 // func (ml *MerkleList) RetrievePost(cid *childLink.Node) error {
-// 
+//
 // }
 
 // InsertPost inserts the given Smor in order into the merklelist
@@ -64,25 +65,29 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 
 	if extra != nil {
 		fmt.Println("HANDLE SPLIT")
-		ml.splitNode(ml.bs, extra)
+		ml.splitNode(extra)
 		panic("TODO: handle splitting")
 	}
 
 	return nil
 }
 
-func (ml *MerkleList) splitNode(bs blockstore.Blockstore, c *cid.Cid) {
-	sm, err := ml.getPost(c); 
-	fmt.Println("Post from getPost", sm)
-	if err != nil {
-		panic(err)
+func (ml *MerkleList) splitNode(mln *MerkleListNode) {
+	if len(mln.Posts) > 0 {
+		sm, err := ml.getPost(c)
+		fmt.Println("Post from getPost", sm)
+		if err != nil {
+			panic(err)
+		}
+
+		val, err := json.Marshal(sm)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Val", val)
+	} else {
+		panic("do the different thing")
 	}
-	
-	val, err := json.Marshal(sm)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Val", val)
 }
 
 func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
@@ -101,7 +106,7 @@ func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
 	return nd.Cid(), nil
 }
 
-func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*cid.Cid, error) {
+func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
 	fmt.Println("C", c)
 	// Base case, no child nodes, insert in this node
 	if ml.Depth == 0 {
@@ -150,8 +155,8 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			if len(extra) > 1 {
 				panic("don't handle this case yet")
 			}
-			
-			return extra[0], nil
+
+			return &MerkleListNode{Posts: extra}, nil
 		}
 
 		return nil, nil
@@ -160,7 +165,7 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 	// recursive case, find the child it belongs in
 	for i := len(ml.Children) - 1; i >= 0; i-- {
 		if time >= ml.Children[i].Beg || i == 0 {
-			var extra *cid.Cid
+			var extra *MerkleListNode
 			err := ml.mutateChild(bs, i, func(cmln *MerkleListNode) error {
 				ex, err := cmln.insertPost(bs, time, c)
 				if err != nil {
@@ -233,9 +238,9 @@ func (ml *MerkleListNode) getPostByIndex(bs blockstore.Blockstore, i int) (*Smor
 	// read the data from the datastore
 	blk, err := bs.Get(ml.Posts[i])
 	if err != nil {
-			return nil, err
+		return nil, err
 	}
-	
+
 	// unmarshal it into a smor object
 	var smor Smor
 	if err := cbor.DecodeInto(blk.RawData(), &smor); err != nil {
