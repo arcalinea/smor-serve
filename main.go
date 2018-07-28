@@ -19,6 +19,12 @@ type Smor struct {
 	ResponseTo string      `json:"response_to"`
 }
 
+type User struct {
+	Pubkey	   string      `json:"pubkey"`
+	CreatedAt  uint64			 `json:"created_at"`
+	Username 	 string			 `json:"username"`
+}
+
 type SmorServ struct {
 	db *leveldb.DB
 }
@@ -62,6 +68,13 @@ func (ss *SmorServ) getFeed(c echo.Context) error {
 	return c.JSON(200, out)
 }
 
+// func (ss *SmorServe) getUser(c echo.Context) error {
+// 	username := c.Param("username")
+// 
+// 	out := User
+// 
+// }
+
 func (ss *SmorServ) postFeedItems(c echo.Context) error {
 	user := c.Param("user")
 
@@ -86,6 +99,29 @@ func (ss *SmorServ) postFeedItems(c echo.Context) error {
 	return ss.db.Write(b, nil)
 }
 
+func (ss *SmorServ) postNewUser(c echo.Context) error {
+	var newUser User 
+	if err := json.NewDecoder(c.Request().Body).Decode(&newUser); err != nil {
+		return err
+	}
+	fmt.Println("NEW USER", newUser)
+	
+	b := &leveldb.Batch{}
+	val, err := json.Marshal(newUser)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Json val", val)
+
+	// TODO: this is using the unix timestamp as the key. This means we will run into issues
+	// if two items have the same timestamp. Really, we just want a collection of items, sorted
+	// on their timestamp.
+	b.Put([]byte(fmt.Sprintf("%s/%d", newUser.Username, newUser.CreatedAt)), val)
+
+	return ss.db.Write(b, nil)
+}
+
+
 func main() {
 	db, err := leveldb.OpenFile("smor.db", nil)
 	if err != nil {
@@ -98,6 +134,9 @@ func main() {
 	e.GET("/feed/:user", ss.getFeed)
 	e.POST("/feed/:user", ss.postFeedItems)
 
+	e.POST("/user/new", ss.postNewUser)
+	// e.GET("user/:username", ss.getUser)
+	
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		fmt.Println("ERROR: ", err)
 		c.JSON(500, nil)
