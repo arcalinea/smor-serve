@@ -72,9 +72,7 @@ func (ss *SmorServ) getFeed(c echo.Context) error {
 func (ss *SmorServ) getPost(c echo.Context) error {
 	user := c.Param("user")
 	timestamp := c.Param("timestamp")
-	
-	fmt.Println("Getting post")
-	
+		
 	createdAt, err := strconv.Atoi(timestamp)
 	if err != nil {
 		return err
@@ -83,7 +81,7 @@ func (ss *SmorServ) getPost(c echo.Context) error {
 	out := Smor{}
 	data, err := ss.db.Get([]byte(fmt.Sprintf("%s/%d", user, createdAt)), nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	fmt.Println(data)
 	
@@ -92,6 +90,22 @@ func (ss *SmorServ) getPost(c echo.Context) error {
 	}
 
 	return c.JSON(200, out)	
+}
+
+func (ss *SmorServ) deletePost(c echo.Context) error {
+	user := c.Param("user")
+	timestamp := c.Param("timestamp")
+		
+	createdAt, err := strconv.Atoi(timestamp)
+	if err != nil {
+		return err
+	}
+	
+	if err := ss.db.Delete([]byte(fmt.Sprintf("%s/%d", user, createdAt)), nil); err != nil {
+		return err
+	}
+	
+	return c.JSON(200, nil)
 }
 
 func (ss *SmorServ) getUser(c echo.Context) error {
@@ -173,6 +187,7 @@ func main() {
 	e.GET("/user/:username", ss.getUser)
 	
 	e.GET("/post/:user/:timestamp", ss.getPost)
+	e.DELETE("/post/:user/:timestamp", ss.deletePost)
 	
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		fmt.Println("ERROR: ", err)
