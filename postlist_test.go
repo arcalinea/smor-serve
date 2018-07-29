@@ -31,7 +31,7 @@ func TestBasicPostlist(t *testing.T) {
 
 	// setup a few random posts to use for test data
 	var posts []*Smor
-	for i := 1; i <= 33; i++ {
+	for i := 1; i <= 100; i++ {
 		posts = append(posts, getRandomSmor(uint64(i)))
 	}
 

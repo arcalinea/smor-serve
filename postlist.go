@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "encoding/json"
 	"fmt"
 
 	"github.com/ipfs/go-cid"
@@ -10,7 +9,7 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-const postsPerNode = 16
+const postsPerNode = 4
 
 type MerkleList struct {
 	bs blockstore.Blockstore
@@ -99,15 +98,13 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 
 	// pass it off to the recursive function (also pass our 'blockstore' so it can persist state)
 	extra, err := ml.root.insertPost(ml.bs, p.CreatedAt, c)
-	fmt.Println("Got extra back,", extra)
 	if err != nil {
 		return err
 	}
 
 	if extra != nil {
-		fmt.Println("HANDLE SPLIT")
+		fmt.Println("HANDLE SPLIT: Got extra back,", extra)
 		ml.splitNode(extra)
-		// panic("TODO: handle splitting")
 	}
 
 	return nil
@@ -148,7 +145,7 @@ func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
 		
 		return nil
 	} else {
-		panic("do the different thing")
+		panic("split children not posts")
 	}
 }
 
@@ -237,15 +234,15 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			*/
 
 			extra := ml.Posts[postsPerNode:]
-			fmt.Println("EXTRA", extra)
+			fmt.Println("EXTRA: ", extra)
 			ml.Posts = ml.Posts[:postsPerNode]
-			fmt.Println("ML posts", ml.Posts)
+			fmt.Println("ML posts: ", ml.Posts)
 
 			if len(extra) > 1 {
 				panic("don't handle this case yet")
 			}
 
-			return &MerkleListNode{Posts: extra}, nil
+			return NewPostsNode(extra), nil
 		}
 
 		return nil, nil
@@ -269,7 +266,19 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			}
 
 			if extra != nil {
-				panic("TODO: handle splitting")
+				// if we're at end of the array, append
+				if i == len(ml.Children) - 1 {
+					cl, err := extra.getChildLink(bs)
+					if err != nil {
+						return nil, err
+					}
+					ml.Children = append(ml.Children, cl)
+				} else {
+					panic("Not inserting at end of children, handle this case")
+				}
+				// if len(ml.Children) > postsPerNode {
+				// 
+				// }
 			}
 
 			return nil, nil
@@ -278,10 +287,42 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 	panic("shouldnt ever get here...")
 }
 
+func (mln *MerkleListNode) getChildLink(bs blockstore.Blockstore) (*childLink, error) {
+	cid, err := putNode(bs, mln)
+	if err != nil {
+		return nil, err
+	}
+	if len(mln.Posts) > 0 {
+		begNode, err := getPost(bs, mln.Posts[0])
+		if err != nil {
+			return nil, err
+		}
+		endNode, err := getPost(bs, mln.Posts[len(mln.Posts) - 1])
+		if err != nil {
+			return nil, err
+		}
+		child := &childLink {
+			Beg: begNode.CreatedAt,
+			End: endNode.CreatedAt,
+			Node: cid,
+		}
+		return child, nil
+	} else if len(mln.Children) > 0 {
+		child := &childLink {
+			Beg: mln.Children[0].Beg,
+			End: mln.Children[len(mln.Children) - 1].End,
+			Node: cid,
+		}
+		return child, nil
+	} else {
+		panic("no posts or children on node, why")
+	}
+}
+
 // mutateChild loads the given child from its hash, applys the given function
 // to it, then rehashes it and updates the link in the children array
-func (ml *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*MerkleListNode) error) error {
-	ch := ml.Children[i]
+func (mln *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*MerkleListNode) error) error {
+	ch := mln.Children[i]
 	blk, err := bs.Get(ch.Node)
 	if err != nil {
 		return err
@@ -305,7 +346,7 @@ func (ml *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*M
 		return err
 	}
 
-	ml.Children[i].Node = cbnd.Cid()
+	mln.Children[i].Node = cbnd.Cid()
 	return nil
 }
 
