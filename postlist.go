@@ -111,42 +111,24 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 }
 
 func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
-	if len(mln.Posts) > 0 {
-		sm, err := getPost(ml.bs, mln.Posts[0])
-		fmt.Println("Post from getPost", sm)
-		if err != nil {
-			panic(err)
-		}
-		
-		rootCid, err := putNode(ml.bs, ml.root)
+		rootCl, err := ml.root.getChildLink(ml.bs)
 		if err != nil {
 			return err
 		}
 		
-		mlnCid, err := putNode(ml.bs, mln)
+		mlnCl, err := mln.getChildLink(ml.bs)
 		if err != nil {
 			return err
 		}
 		
 		children := []*childLink{
-			&childLink{
-				Beg: 0, // need func that given merkle list node, returns beginning and end
-				End: 0,
-				Node: rootCid,
-			},
-			&childLink{
-				Beg: sm.CreatedAt,
-				End: sm.CreatedAt,
-				Node: mlnCid, 
-			},
+			rootCl,
+			mlnCl,
 		}
 		
 		ml.root = NewChildrenNode(children, ml.root.Depth + 1)
 		
 		return nil
-	} else {
-		panic("split children not posts")
-	}
 }
 
 func putNode(bs blockstore.Blockstore, mln *MerkleListNode) (*cid.Cid, error) {
@@ -192,15 +174,15 @@ func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
 	return nd.Cid(), nil
 }
 
-func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
+func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
 	fmt.Println("C", c)
 	// Base case, no child nodes, insert in this node
-	if ml.Depth == 0 {
+	if mln.Depth == 0 {
 
 		// iterate from the end to the front, we expect most 'inserts' to be 'append'
 		var i int
-		for i = len(ml.Posts) - 1; i >= 0; i-- {
-			sm, err := ml.getPostByIndex(bs, i)
+		for i = len(mln.Posts) - 1; i >= 0; i-- {
+			sm, err := mln.getPostByIndex(bs, i)
 			if err != nil {
 				return nil, err
 			}
@@ -209,19 +191,19 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 				// insert it here!
 
 				// snippet below from golang slice tricks
-				ml.Posts = append(ml.Posts[:i+1], append([]*cid.Cid{c}, ml.Posts[i+1:]...)...)
-				fmt.Println(ml.Posts)
+				mln.Posts = append(mln.Posts[:i+1], append([]*cid.Cid{c}, mln.Posts[i+1:]...)...)
+				fmt.Println(mln.Posts)
 				break
 			}
 		}
 
 		if i == -1 {
 			// if we make it here, our post occurs before every other post, insert it to the front
-			ml.Posts = append([]*cid.Cid{c}, ml.Posts...)
+			mln.Posts = append([]*cid.Cid{c}, mln.Posts...)
 		}
 
 		// now check if we need to split
-		if len(ml.Posts) > postsPerNode {
+		if len(mln.Posts) > postsPerNode {
 			fmt.Println("Splitting node...")
 			/* split this node into two
 			Go from:
@@ -233,10 +215,10 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 			  [ .......]  [ .........]
 			*/
 
-			extra := ml.Posts[postsPerNode:]
+			extra := mln.Posts[postsPerNode:]
 			fmt.Println("EXTRA: ", extra)
-			ml.Posts = ml.Posts[:postsPerNode]
-			fmt.Println("ML posts: ", ml.Posts)
+			mln.Posts = mln.Posts[:postsPerNode]
+			fmt.Println("ML posts: ", mln.Posts)
 
 			if len(extra) > 1 {
 				panic("don't handle this case yet")
@@ -249,11 +231,11 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 	}
 
 	// recursive case, find the child it belongs in
-	for i := len(ml.Children) - 1; i >= 0; i-- {
-		if time >= ml.Children[i].Beg || i == 0 {
+	for i := len(mln.Children) - 1; i >= 0; i-- {
+		if time >= mln.Children[i].Beg || i == 0 {
 			var extra *MerkleListNode
-			err := ml.mutateChild(bs, i, func(cmln *MerkleListNode) error {
-				ex, err := cmln.insertPost(bs, time, c)
+			err := mln.mutateChild(bs, i, func(cmlnn *MerkleListNode) error {
+				ex, err := cmlnn.insertPost(bs, time, c)
 				if err != nil {
 					return err
 				}
@@ -267,18 +249,28 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 
 			if extra != nil {
 				// if we're at end of the array, append
-				if i == len(ml.Children) - 1 {
+				if i == len(mln.Children) - 1 {
 					cl, err := extra.getChildLink(bs)
 					if err != nil {
 						return nil, err
 					}
-					ml.Children = append(ml.Children, cl)
+					mln.Children = append(mln.Children, cl)
 				} else {
 					panic("Not inserting at end of children, handle this case")
 				}
-				// if len(ml.Children) > postsPerNode {
-				// 
-				// }
+				if len(mln.Children) > postsPerNode {
+					fmt.Println("Splitting child node...")
+					extra := mln.Children[postsPerNode:]
+					fmt.Println("EXTRA Child node: ", extra)
+					mln.Children = mln.Children[:postsPerNode]
+					fmt.Println("ML Child Posts after split: ", mln.Children)
+
+					if len(extra) > 1 {
+						panic("don't handle this case yet")
+					}
+
+					return NewChildrenNode(extra, mln.Depth), nil
+				}
 			}
 
 			return nil, nil
