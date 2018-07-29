@@ -31,7 +31,7 @@ func TestBasicPostlist(t *testing.T) {
 
 	// setup a few random posts to use for test data
 	var posts []*Smor
-	postLimit := 44
+	postLimit := 5000
 	for i := 1; i <= postLimit; i++ {
 		posts = append(posts, getRandomSmor(uint64(i)))
 	}
@@ -45,12 +45,12 @@ func TestBasicPostlist(t *testing.T) {
 	
 	ml.ForEach(func(sm *Smor){ 
 		fmt.Println(sm)
+		smor, err := ml.RetrievePost(sm.CreatedAt)
+		if err != nil {
+			t.Fatal("Error with retrieve func", err)
+		}
+		fmt.Println("TEST: Found smor: ", smor)
 	})
 	
-	smor, err := ml.RetrievePost(uint64(postLimit))
-	fmt.Println("TEST: Found smor: ", smor)
-	if err != nil {
-		t.Fatal("Error with retrieve func", err)
-	}
 }
 

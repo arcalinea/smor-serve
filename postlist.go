@@ -80,14 +80,6 @@ func (mln *MerkleListNode) forEach(bs blockstore.Blockstore, f func(*Smor)) erro
 	return nil
 }
 
-func isInChildRange(children []*childLink, timestamp uint64) bool {
-	if timestamp > children[0].Beg && timestamp < children[len(children) - 1].End {
-		return true
-	} else {
-		return false
-	}
-}
-
 func getByTimestampClosure(out **Smor, timestamp uint64) func(*Smor) {
 	return func(s *Smor) {
 		if s.CreatedAt == timestamp {
@@ -141,10 +133,11 @@ func (ml *MerkleList) RetrievePost(timestamp uint64) (*Smor, error) {
 			}
 		}
 	} else if len(ml.root.Children) > 0 {
-		if isInChildRange(ml.root.Children, timestamp) {
+		children := ml.root.Children
+		if timestamp >= children[0].Beg && timestamp <= children[len(children) - 1].End  {
 			// iterate through child node of root node
 			for i := range ml.root.Children {
-				if timestamp > ml.root.Children[i].Beg && timestamp < ml.root.Children[i].End {
+				if timestamp >= children[i].Beg && timestamp <= children[i].End {
 					node, err := getNode(ml.bs, ml.root.Children[i].Node)
 					if err != nil {
 						return nil, err
