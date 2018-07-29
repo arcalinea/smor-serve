@@ -1,25 +1,12 @@
 package main
 
 import (
-	"encoding/hex"
-	"math/rand"
 	"testing"
 	"fmt"
 
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-ipfs-blockstore"
 )
-
-func getRandomSmor(t uint64) *Smor {
-	buf := make([]byte, 16)
-	rand.Read(buf)
-	data := hex.EncodeToString(buf)
-
-	return &Smor{
-		CreatedAt: t,
-		Data:      data,
-	}
-}
 
 func TestBasicPostlist(t *testing.T) {
 	// make a memory backed blockstore for testing
@@ -43,14 +30,18 @@ func TestBasicPostlist(t *testing.T) {
 		fmt.Println(ml.root)
 	}
 	
-	ml.ForEach(func(sm *Smor){ 
+	err := ml.ForEach(func(sm *Smor) error { 
 		fmt.Println(sm)
 		smor, err := ml.RetrievePost(sm.CreatedAt)
 		if err != nil {
 			t.Fatal("Error with retrieve func", err)
 		}
 		fmt.Println("TEST: Found smor: ", smor)
+		return nil
 	})
+	if err != nil {
+		t.Fatal("For each func failed")
+	}
 	
 }
 

@@ -55,9 +55,7 @@ func (ss *SmorServ) forEachItem(username string, f func(*Smor) error) error {
 	return ml.ForEach(f)
 }
 
-func (ss *SmorServ) getFeed(c echo.Context) error {
-	username := c.Param("user")
-	
+func (ss *SmorServ) getFeed(username string) ([]*Smor, error) {
 	// TODO: this is really dumb, i'm just putting everything into a big array, then sending it out.
 	// Could instead send each object out as its parsed
 	out := []*Smor{}
@@ -66,10 +64,20 @@ func (ss *SmorServ) getFeed(c echo.Context) error {
 		return nil
 	})
 	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (ss *SmorServ) handleGetFeed(c echo.Context) error {
+	username := c.Param("user")
+	
+  posts, err := ss.getFeed(username)
+	if err != nil {
 		return err
 	}
 	
-	return c.JSON(200, out)
+	return c.JSON(200, posts)
 }
 
 func (ss *SmorServ) getPost(c echo.Context) error {
@@ -132,30 +140,35 @@ func (ss *SmorServ) getUser(c echo.Context) error {
 	return c.JSON(200, out)	
 }
 
-func (ss *SmorServ) postFeedItems(c echo.Context) error {
+func (ss *SmorServ) postFeedItems(user string, data []*Smor) error {
+		for _, sm := range data {
+			val, err := json.Marshal(sm)
+			if err != nil {
+				return err
+			}
+
+			// TODO: this is using the unix timestamp as the key. This means we will run into issues
+			// if two items have the same timestamp. Really, we just want a collection of items, sorted
+			// on their timestamp.
+			key := ds.NewKey(fmt.Sprintf("%s/%d", user, sm.CreatedAt))
+			ss.db.Put(key, val)
+		}
+		return nil
+}
+
+func (ss *SmorServ) handlePostFeed(c echo.Context) error {
 	user := c.Param("user")
 
-	var nudata []Smor
+	var nudata []*Smor
 	if err := json.NewDecoder(c.Request().Body).Decode(&nudata); err != nil {
 		return err
 	}
-
-	// b := &leveldb.Batch{}
-	for _, sm := range nudata {
-		val, err := json.Marshal(sm)
-		if err != nil {
-			return err
-		}
-
-		// TODO: this is using the unix timestamp as the key. This means we will run into issues
-		// if two items have the same timestamp. Really, we just want a collection of items, sorted
-		// on their timestamp.
-		key := ds.NewKey(fmt.Sprintf("%s/%d", user, sm.CreatedAt))
-		ss.db.Put(key, val)
+	 
+	if err := ss.postFeedItems(user, nudata); err != nil {
+		return err
 	}
 
 	return nil
-	// return ss.db.Write(b, nil)
 }
 
 func (ss *SmorServ) postNewUser(c echo.Context) error {
@@ -190,8 +203,8 @@ func main() {
 	ss := &SmorServ{db: db, bs: blockstore.NewBlockstore(db)}
 
 	e := echo.New()
-	e.GET("/feed/:user", ss.getFeed)
-	e.POST("/feed/:user", ss.postFeedItems)
+	e.GET("/feed/:user", ss.handleGetFeed)
+	e.POST("/feed/:user", ss.handlePostFeed)
 
 	e.POST("/user/new", ss.postNewUser)
 	e.GET("/user/:username", ss.getUser)
