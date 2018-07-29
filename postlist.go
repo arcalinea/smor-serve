@@ -6,14 +6,12 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
-	mh "github.com/multiformats/go-multihash"
 )
 
 const postsPerNode = 4
 
 type MerkleList struct {
 	bs blockstore.Blockstore
-
 	root *MerkleListNode
 }
 
@@ -26,10 +24,8 @@ type MerkleListNode struct {
 type childLink struct {
 	// Beg is the lowest timestamp on any post in this child
 	Beg uint64
-
 	// End is the highest timestamp on any post in this child
 	End uint64
-
 	// Node is the hash link to the child object
 	Node *cid.Cid
 }
@@ -48,41 +44,41 @@ func NewChildrenNode(children []*childLink, depth int) *MerkleListNode {
 	}
 }
 
-func (ml *MerkleList) ForEach(f func(*Smor)) error {
-	return ml.root.forEach(ml.bs, f)
-}
-
-func (mln *MerkleListNode) forEach(bs blockstore.Blockstore, f func(*Smor)) error {
-	if len(mln.Posts) > 0 {
-		for i := range mln.Posts {
-			sm, err := getPost(bs, mln.Posts[i])
-			if err != nil {
-				return err
-			}
-			
-			f(sm)
-		}
-	} else if len(mln.Children) > 0 {
-		for i := range mln.Children {
-			node, err := getNode(bs, mln.Children[i].Node)
-			if err != nil {
-				return err
-			}
-			
-			if err := node.forEach(bs, f); err != nil {
-				return err
-			}
-		}
-	} else {
-		// why is it empty 
-		panic("merkle node has no posts or children")
+func (mln *MerkleListNode) getChildLink(bs blockstore.Blockstore) (*childLink, error) {
+	cid, err := putNode(bs, mln)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	if len(mln.Posts) > 0 {
+		begNode, err := getPost(bs, mln.Posts[0])
+		if err != nil {
+			return nil, err
+		}
+		endNode, err := getPost(bs, mln.Posts[len(mln.Posts) - 1])
+		if err != nil {
+			return nil, err
+		}
+		child := &childLink {
+			Beg: begNode.CreatedAt,
+			End: endNode.CreatedAt,
+			Node: cid,
+		}
+		return child, nil
+	} else if len(mln.Children) > 0 {
+		child := &childLink {
+			Beg: mln.Children[0].Beg,
+			End: mln.Children[len(mln.Children) - 1].End,
+			Node: cid,
+		}
+		return child, nil
+	} else {
+		panic("no posts or children on node, why")
+	}
 }
 
 // InsertPost inserts the given Smor in order into the merklelist
 func (ml *MerkleList) InsertPost(p *Smor) error {
-	c, err := ml.putPost(p)
+	c, err := putPost(ml.bs, p)
 	if err != nil {
 		return err
 	}
@@ -129,49 +125,6 @@ func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
 		ml.root = NewChildrenNode(children, ml.root.Depth + 1)
 		
 		return nil
-}
-
-func putNode(bs blockstore.Blockstore, mln *MerkleListNode) (*cid.Cid, error) {
-	node, err := cbor.WrapObject(mln, mh.SHA2_256, -1)
-	if err != nil {
-		return nil, err
-	}
-	
-	if err := bs.Put(node); err != nil {
-		return nil, err
-	}
-	
-	return node.Cid(), nil
-}
-
-func getNode(bs blockstore.Blockstore, c *cid.Cid) (*MerkleListNode, error) {
-	blk, err := bs.Get(c)
-	if err != nil {
-		return nil, err
-	}
-	// unmarshal it into a smor object
-	var out MerkleListNode
-	if err := cbor.DecodeInto(blk.RawData(), &out); err != nil {
-		return nil, err
-	}
-
-	return &out, nil
-}
-
-func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
-	// convert it to cbor ipld
-	nd, err := cbor.WrapObject(p, mh.SHA2_256, -1)
-	if err != nil {
-		return nil, err
-	}
-
-	// write it to the blockstore (a content addressing layer over any storage backend)
-	if err := ml.bs.Put(nd); err != nil {
-		return nil, err
-	}
-
-	// return its content identifier
-	return nd.Cid(), nil
 }
 
 // Inserting a post into the leaf node it belongs in, base case of insertPost()
@@ -228,7 +181,7 @@ func (mln *MerkleListNode) insertIntoLeaf(bs blockstore.Blockstore, time uint64,
 }
 
 func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
-	fmt.Println("C", c)
+	fmt.Println("Cid", c)
 	// Base case, no child nodes, insert in this node
 	if mln.Depth == 0 {
 		return mln.insertIntoLeaf(bs, time, c)
@@ -239,6 +192,7 @@ func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *
 		if time >= mln.Children[i].Beg || i == 0 {
 			var extra *MerkleListNode
 			err := mln.mutateChild(bs, i, func(cmlnn *MerkleListNode) error {
+				// inserting
 				ex, err := cmlnn.insertPost(bs, time, c)
 				if err != nil {
 					return err
@@ -263,11 +217,9 @@ func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *
 					panic("Not inserting at end of children, handle this case")
 				}
 				if len(mln.Children) > postsPerNode {
-					fmt.Println("Splitting child node...")
+					// Splitting child node
 					extra := mln.Children[postsPerNode:]
-					fmt.Println("EXTRA Child node: ", extra)
 					mln.Children = mln.Children[:postsPerNode]
-					fmt.Println("ML Child Posts after split: ", mln.Children)
 
 					if len(extra) > 1 {
 						panic("don't handle this case yet")
@@ -276,43 +228,10 @@ func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *
 					return NewChildrenNode(extra, mln.Depth), nil
 				}
 			}
-
 			return nil, nil
 		}
 	}
 	panic("shouldnt ever get here...")
-}
-
-func (mln *MerkleListNode) getChildLink(bs blockstore.Blockstore) (*childLink, error) {
-	cid, err := putNode(bs, mln)
-	if err != nil {
-		return nil, err
-	}
-	if len(mln.Posts) > 0 {
-		begNode, err := getPost(bs, mln.Posts[0])
-		if err != nil {
-			return nil, err
-		}
-		endNode, err := getPost(bs, mln.Posts[len(mln.Posts) - 1])
-		if err != nil {
-			return nil, err
-		}
-		child := &childLink {
-			Beg: begNode.CreatedAt,
-			End: endNode.CreatedAt,
-			Node: cid,
-		}
-		return child, nil
-	} else if len(mln.Children) > 0 {
-		child := &childLink {
-			Beg: mln.Children[0].Beg,
-			End: mln.Children[len(mln.Children) - 1].End,
-			Node: cid,
-		}
-		return child, nil
-	} else {
-		panic("no posts or children on node, why")
-	}
 }
 
 // mutateChild loads the given child from its hash, applys the given function
@@ -340,34 +259,4 @@ func (mln *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, mutateFu
 
 	mln.Children[i] = chl
 	return nil
-}
-
-func getPost(bs blockstore.Blockstore, c *cid.Cid) (*Smor, error) {
-	blk, err := bs.Get(c)
-	if err != nil {
-		return nil, err
-	}
-	// unmarshal it into a smor object
-	var out Smor
-	if err := cbor.DecodeInto(blk.RawData(), &out); err != nil {
-		return nil, err
-	}
-
-	return &out, nil
-}
-
-func (ml *MerkleListNode) getPostByIndex(bs blockstore.Blockstore, i int) (*Smor, error) {
-	// read the data from the datastore
-	blk, err := bs.Get(ml.Posts[i])
-	if err != nil {
-		return nil, err
-	}
-
-	// unmarshal it into a smor object
-	var smor Smor
-	if err := cbor.DecodeInto(blk.RawData(), &smor); err != nil {
-		return nil, err
-	}
-
-	return &smor, nil
 }
