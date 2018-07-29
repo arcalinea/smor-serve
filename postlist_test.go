@@ -31,7 +31,7 @@ func TestBasicPostlist(t *testing.T) {
 
 	// setup a few random posts to use for test data
 	var posts []*Smor
-	for i := 1; i < 18; i++ {
+	for i := 1; i <= 33; i++ {
 		posts = append(posts, getRandomSmor(uint64(i)))
 	}
 
@@ -41,4 +41,9 @@ func TestBasicPostlist(t *testing.T) {
 		}
 		fmt.Println(ml.root)
 	}
+	
+	ml.ForEach(func(sm *Smor){ 
+		fmt.Println(sm)
+	})
 }
+

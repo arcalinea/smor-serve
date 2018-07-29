@@ -35,6 +35,52 @@ type childLink struct {
 	Node *cid.Cid
 }
 
+func NewPostsNode(posts []*cid.Cid) *MerkleListNode {
+	return &MerkleListNode{
+		Depth: 0,
+		Posts: posts,
+	}
+}
+
+func NewChildrenNode(children []*childLink, depth int) *MerkleListNode {
+	return &MerkleListNode{
+		Depth: depth,
+		Children: children,
+	}
+}
+
+func (ml *MerkleList) ForEach(f func(*Smor)) error {
+	return ml.root.forEach(ml.bs, f)
+}
+
+func (mln *MerkleListNode) forEach(bs blockstore.Blockstore, f func(*Smor)) error {
+	if len(mln.Posts) > 0 {
+		for i := range mln.Posts {
+			sm, err := getPost(bs, mln.Posts[i])
+			if err != nil {
+				return err
+			}
+			
+			f(sm)
+		}
+	} else if len(mln.Children) > 0 {
+		for i := range mln.Children {
+			node, err := getNode(bs, mln.Children[i].Node)
+			if err != nil {
+				return err
+			}
+			
+			if err := node.forEach(bs, f); err != nil {
+				return err
+			}
+		}
+	} else {
+		// why is it empty 
+		panic("mln is empty, WHYYYY")
+	}
+	return nil
+}
+
 // InsertPost inserts the given Smor in order into the merklelist
 func (ml *MerkleList) InsertPost(p *Smor) error {
 	c, err := ml.putPost(p)
@@ -69,7 +115,7 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 
 func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
 	if len(mln.Posts) > 0 {
-		sm, err := ml.getPost(mln.Posts[0])
+		sm, err := getPost(ml.bs, mln.Posts[0])
 		fmt.Println("Post from getPost", sm)
 		if err != nil {
 			panic(err)
@@ -85,20 +131,20 @@ func (ml *MerkleList) splitNode(mln *MerkleListNode) error {
 			return err
 		}
 		
-		ml.root = &MerkleListNode{
-			Children: []*childLink{
-				&childLink{
-					Beg: 0, // need func that given merkle list node, returns beginning and end
-					End: 0,
-					Node: rootCid,
-				},
-				&childLink{
-					Beg: sm.CreatedAt,
-					End: sm.CreatedAt,
-					Node: mlnCid, 
-				},
+		children := []*childLink{
+			&childLink{
+				Beg: 0, // need func that given merkle list node, returns beginning and end
+				End: 0,
+				Node: rootCid,
+			},
+			&childLink{
+				Beg: sm.CreatedAt,
+				End: sm.CreatedAt,
+				Node: mlnCid, 
 			},
 		}
+		
+		ml.root = NewChildrenNode(children, ml.root.Depth + 1)
 		
 		return nil
 	} else {
@@ -117,6 +163,20 @@ func putNode(bs blockstore.Blockstore, mln *MerkleListNode) (*cid.Cid, error) {
 	}
 	
 	return node.Cid(), nil
+}
+
+func getNode(bs blockstore.Blockstore, c *cid.Cid) (*MerkleListNode, error) {
+	blk, err := bs.Get(c)
+	if err != nil {
+		return nil, err
+	}
+	// unmarshal it into a smor object
+	var out MerkleListNode
+	if err := cbor.DecodeInto(blk.RawData(), &out); err != nil {
+		return nil, err
+	}
+
+	return &out, nil
 }
 
 func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
@@ -152,7 +212,7 @@ func (ml *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *c
 				// insert it here!
 
 				// snippet below from golang slice tricks
-				ml.Posts = append(ml.Posts[:i], append([]*cid.Cid{c}, ml.Posts[i:]...)...)
+				ml.Posts = append(ml.Posts[:i+1], append([]*cid.Cid{c}, ml.Posts[i+1:]...)...)
 				fmt.Println(ml.Posts)
 				break
 			}
@@ -249,8 +309,8 @@ func (ml *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*M
 	return nil
 }
 
-func (ml *MerkleList) getPost(c *cid.Cid) (*Smor, error) {
-	blk, err := ml.bs.Get(c)
+func getPost(bs blockstore.Blockstore, c *cid.Cid) (*Smor, error) {
+	blk, err := bs.Get(c)
 	if err != nil {
 		return nil, err
 	}
