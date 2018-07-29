@@ -75,9 +75,101 @@ func (mln *MerkleListNode) forEach(bs blockstore.Blockstore, f func(*Smor)) erro
 		}
 	} else {
 		// why is it empty 
-		panic("mln is empty, WHYYYY")
+		panic("merkle node has no posts or children")
 	}
 	return nil
+}
+
+func isInChildRange(children []*childLink, timestamp uint64) bool {
+	if timestamp > children[0].Beg && timestamp < children[len(children) - 1].End {
+		return true
+	} else {
+		return false
+	}
+}
+
+func getByTimestampClosure(out **Smor, timestamp uint64) func(*Smor) {
+	return func(s *Smor) {
+		if s.CreatedAt == timestamp {
+			*out = s
+		}
+	}
+}
+
+func (mln *MerkleListNode) searchByTimestamp(bs blockstore.Blockstore, timestamp uint64) (*Smor, error) {
+	if len(mln.Posts) > 0 {
+		for i := range mln.Posts {
+			sm, err := getPost(bs, mln.Posts[i])
+			if err != nil {
+				return nil, err
+			}
+			if sm.CreatedAt == timestamp {
+				return sm, nil
+			}
+		}
+		return nil, fmt.Errorf("Smor not found in posts")
+	} else if len(mln.Children) > 0 {
+		for i := range mln.Children {
+			if timestamp >= mln.Children[i].Beg && timestamp <= mln.Children[i].End {
+				node, err := getNode(bs, mln.Children[i].Node)
+				if err != nil {
+					return nil, err
+				}
+				sm, err := node.searchByTimestamp(bs, timestamp)
+				if err != nil {
+					return nil, err
+				}
+				return sm, nil
+			}
+		}
+		return nil, fmt.Errorf("Smor not found in children")
+	} else {
+		panic("merkle node has no posts or children")
+	}
+}
+
+func (ml *MerkleList) RetrievePost(timestamp uint64) (*Smor, error) {
+	if len(ml.root.Posts) != 0 {
+		// has to be in posts on root node
+		for i := range ml.root.Posts {
+			sm, err := getPost(ml.bs, ml.root.Posts[i])
+			if err != nil {
+				return nil, err
+			}
+			if sm.CreatedAt == timestamp {
+				return sm, nil
+			}
+		}
+	} else if len(ml.root.Children) > 0 {
+		if isInChildRange(ml.root.Children, timestamp) {
+			// iterate through child node of root node
+			for i := range ml.root.Children {
+				if timestamp > ml.root.Children[i].Beg && timestamp < ml.root.Children[i].End {
+					node, err := getNode(ml.bs, ml.root.Children[i].Node)
+					if err != nil {
+						return nil, err
+					}
+					sm, err := node.searchByTimestamp(ml.bs, timestamp)
+					if err != nil {
+						return nil, err
+					}
+					return sm, nil
+				}
+			}
+		} else {
+			// Search from last child
+			node, err := getNode(ml.bs, ml.root.Children[len(ml.root.Children) - 1].Node)
+			if err != nil {
+				return nil, err
+			}
+			sm, err := node.searchByTimestamp(ml.bs, timestamp)
+			if err != nil {
+				return nil, err
+			}
+			return sm, nil
+		}
+	}
+	panic("Shouldn't get here in RetrievePost")
 }
 
 // InsertPost inserts the given Smor in order into the merklelist
@@ -174,60 +266,64 @@ func (ml *MerkleList) putPost(p *Smor) (*cid.Cid, error) {
 	return nd.Cid(), nil
 }
 
+// Inserting a post into the leaf node it belongs in, base case of insertPost()
+func (mln *MerkleListNode) insertIntoLeaf(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
+			// iterate from the end to the front, we expect most 'inserts' to be 'append'
+			var i int
+			for i = len(mln.Posts) - 1; i >= 0; i-- {
+				sm, err := mln.getPostByIndex(bs, i)
+				if err != nil {
+					return nil, err
+				}
+
+				if time >= sm.CreatedAt {
+					// insert it here!
+
+					// snippet below from golang slice tricks
+					mln.Posts = append(mln.Posts[:i+1], append([]*cid.Cid{c}, mln.Posts[i+1:]...)...)
+					fmt.Println(mln.Posts)
+					break
+				}
+			}
+
+			if i == -1 {
+				// if we make it here, our post occurs before every other post, insert it to the front
+				mln.Posts = append([]*cid.Cid{c}, mln.Posts...)
+			}
+
+			// now check if we need to split
+			if len(mln.Posts) > postsPerNode {
+				fmt.Println("Splitting node...")
+				/* split this node into two
+				Go from:
+				  [ ............... ]
+				To:
+				  [ X X ]
+				    | |--------|
+				    |          |
+				  [ .......]  [ .........]
+				*/
+
+				extra := mln.Posts[postsPerNode:]
+				fmt.Println("EXTRA: ", extra)
+				mln.Posts = mln.Posts[:postsPerNode]
+				fmt.Println("ML posts: ", mln.Posts)
+
+				if len(extra) > 1 {
+					panic("don't handle this case yet")
+				}
+
+				return NewPostsNode(extra), nil
+			}
+
+			return nil, nil
+}
+
 func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
 	fmt.Println("C", c)
 	// Base case, no child nodes, insert in this node
 	if mln.Depth == 0 {
-
-		// iterate from the end to the front, we expect most 'inserts' to be 'append'
-		var i int
-		for i = len(mln.Posts) - 1; i >= 0; i-- {
-			sm, err := mln.getPostByIndex(bs, i)
-			if err != nil {
-				return nil, err
-			}
-
-			if time >= sm.CreatedAt {
-				// insert it here!
-
-				// snippet below from golang slice tricks
-				mln.Posts = append(mln.Posts[:i+1], append([]*cid.Cid{c}, mln.Posts[i+1:]...)...)
-				fmt.Println(mln.Posts)
-				break
-			}
-		}
-
-		if i == -1 {
-			// if we make it here, our post occurs before every other post, insert it to the front
-			mln.Posts = append([]*cid.Cid{c}, mln.Posts...)
-		}
-
-		// now check if we need to split
-		if len(mln.Posts) > postsPerNode {
-			fmt.Println("Splitting node...")
-			/* split this node into two
-			Go from:
-			  [ ............... ]
-			To:
-			  [ X X ]
-			    | |--------|
-			    |          |
-			  [ .......]  [ .........]
-			*/
-
-			extra := mln.Posts[postsPerNode:]
-			fmt.Println("EXTRA: ", extra)
-			mln.Posts = mln.Posts[:postsPerNode]
-			fmt.Println("ML posts: ", mln.Posts)
-
-			if len(extra) > 1 {
-				panic("don't handle this case yet")
-			}
-
-			return NewPostsNode(extra), nil
-		}
-
-		return nil, nil
+		return mln.insertIntoLeaf(bs, time, c)
 	}
 
 	// recursive case, find the child it belongs in
@@ -313,7 +409,7 @@ func (mln *MerkleListNode) getChildLink(bs blockstore.Blockstore) (*childLink, e
 
 // mutateChild loads the given child from its hash, applys the given function
 // to it, then rehashes it and updates the link in the children array
-func (mln *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*MerkleListNode) error) error {
+func (mln *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, mutateFunc func(*MerkleListNode) error) error {
 	ch := mln.Children[i]
 	blk, err := bs.Get(ch.Node)
 	if err != nil {
@@ -325,20 +421,16 @@ func (mln *MerkleListNode) mutateChild(bs blockstore.Blockstore, i int, f func(*
 		return err
 	}
 
-	if err := f(&childNode); err != nil {
+	if err := mutateFunc(&childNode); err != nil {
 		return err
 	}
 
-	cbnd, err := cbor.WrapObject(childNode, mh.SHA2_256, -1)
+	chl, err := childNode.getChildLink(bs)
 	if err != nil {
 		return err
 	}
 
-	if err := bs.Put(cbnd); err != nil {
-		return err
-	}
-
-	mln.Children[i].Node = cbnd.Cid()
+	mln.Children[i] = chl
 	return nil
 }
 
