@@ -35,6 +35,7 @@ type SmorServ struct {
 }
 
 func (ss *SmorServ) forEachItem(username string, f func(*Smor) error) error {
+	fmt.Println("Username", username)
 	user := User{}
 	key := ds.NewKey(username)
 	data, err := ss.db.Get(key)
@@ -60,6 +61,7 @@ func (ss *SmorServ) getFeed(username string) ([]*Smor, error) {
 	// Could instead send each object out as its parsed
 	out := []*Smor{}
 	err := ss.forEachItem(username, func(sm *Smor) error {
+		fmt.Println("Smor found for user:", username, sm)
 		out = append(out, sm)
 		return nil
 	})
@@ -121,11 +123,8 @@ func (ss *SmorServ) deletePost(c echo.Context) error {
 	return c.JSON(200, nil)
 }
 
-func (ss *SmorServ) getUser(c echo.Context) error {
-	username := c.Param("username")
-	fmt.Println("Username", username)
-	
-	out := User{}
+func (ss *SmorServ) getUser(username string) (User, error) {
+	user := User{}
 	key := ds.NewKey(username)
 	data, err := ss.db.Get(key)
 	if err != nil {
@@ -133,14 +132,34 @@ func (ss *SmorServ) getUser(c echo.Context) error {
 	}
 	fmt.Println(data)
 	
-	if err := json.Unmarshal(data.([]byte), &out); err != nil {
+	if err := json.Unmarshal(data.([]byte), &user); err != nil {
+		panic(err)
+	}
+	
+	return user, nil
+}
+
+func (ss *SmorServ) handleGetUser(c echo.Context) error {
+	username := c.Param("username")
+	fmt.Println("Username", username)
+	
+	user, err := ss.getUser(username)
+	if err != nil {
 		return err
 	}
 
-	return c.JSON(200, out)	
+	return c.JSON(200, user)	
 }
 
-func (ss *SmorServ) postFeedItems(user string, data []*Smor) error {
+func (ss *SmorServ) postFeedItems(username string, data []*Smor) error {
+	  user, err := ss.getUser(username)
+		if err != nil {
+			return err
+		}
+		ml, err := LoadMerkleList(ss.bs, user.PostsRoot)
+		if err != nil {
+			return err
+		}
 		for _, sm := range data {
 			val, err := json.Marshal(sm)
 			if err != nil {
@@ -150,8 +169,21 @@ func (ss *SmorServ) postFeedItems(user string, data []*Smor) error {
 			// TODO: this is using the unix timestamp as the key. This means we will run into issues
 			// if two items have the same timestamp. Really, we just want a collection of items, sorted
 			// on their timestamp.
-			key := ds.NewKey(fmt.Sprintf("%s/%d", user, sm.CreatedAt))
+			key := ds.NewKey(fmt.Sprintf("%s/%d", username, sm.CreatedAt))
 			ss.db.Put(key, val)
+			
+			if err := ml.InsertPost(sm); err != nil {
+				return err
+			}
+			fmt.Println(ml.root)
+		}
+		cid, err := putNode(ml.bs, ml.root)
+		if err != nil {
+			return err
+		}
+		user.PostsRoot = cid
+		if err := ss.saveUser(&user); err != nil {
+			return err
 		}
 		return nil
 }
@@ -171,24 +203,28 @@ func (ss *SmorServ) handlePostFeed(c echo.Context) error {
 	return nil
 }
 
-func (ss *SmorServ) postNewUser(c echo.Context) error {
-	var newUser User 
-	if err := json.NewDecoder(c.Request().Body).Decode(&newUser); err != nil {
-		return err
-	}
-	fmt.Println("NEW USER", newUser)
-	
+func (ss *SmorServ) saveUser(user *User) error {
 	// b := &leveldb.Batch{}
-	val, err := json.Marshal(newUser)
+	val, err := json.Marshal(user)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("Json val", val)
 
 	// TODO: this is using the username as the key
-	key := ds.NewKey(newUser.Username)
-	return ss.db.Put(key, val)
+	key := ds.NewKey(user.Username)
+	ss.db.Put(key, val)
+	return nil
+}
 
+func (ss *SmorServ) postNewUser(c echo.Context) error {
+	var newUser User 
+	if err := json.NewDecoder(c.Request().Body).Decode(&newUser); err != nil {
+		return err
+	}
+	fmt.Println("NEW USER", newUser)
+	ss.saveUser(&newUser)
+	return nil
 	// return ss.db.Write(b, nil)
 }
 
@@ -207,7 +243,7 @@ func main() {
 	e.POST("/feed/:user", ss.handlePostFeed)
 
 	e.POST("/user/new", ss.postNewUser)
-	e.GET("/user/:username", ss.getUser)
+	e.GET("/user/:username", ss.handleGetUser)
 	
 	e.GET("/post/:user/:timestamp", ss.getPost)
 	e.DELETE("/post/:user/:timestamp", ss.deletePost)

@@ -23,9 +23,26 @@ func TestFeed(t *testing.T) {
 		posts = append(posts, getRandomSmor(uint64(i)))
 	}
   
-  if err := ss.postFeedItems("alice", posts); err != nil {
-    t.Fatal("Failed postFeedItems")
+  user := &User{
+    CreatedAt: 0,
+    Username: "alice",
   }
   
-  fmt.Println("Posts", posts)
+  if err := ss.saveUser(user); err != nil {
+    t.Fatal("Save user failed")
+  }
+  
+  // ml := MerkleList{bs: ss.bs}
+
+  if err := ss.postFeedItems(user.Username, posts); err != nil {
+    t.Fatal("Failed postFeedItems")
+  }
+  fmt.Print("Posted items")
+  
+  retrievedPosts, err := ss.getFeed(user.Username)
+  if err != nil {
+    t.Fatal("Failed getFeed")
+  }
+  
+  fmt.Println("Out posts", retrievedPosts)
 }

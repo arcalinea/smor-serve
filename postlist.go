@@ -31,6 +31,12 @@ type childLink struct {
 }
 
 func LoadMerkleList(bs blockstore.Blockstore, c *cid.Cid) (*MerkleList, error) {
+	if c == nil {
+		return &MerkleList{
+			bs: bs,
+			root: nil,
+		}, nil
+	}
 	node, err := getNode(bs, c)
 	if err != nil {
 		return nil, err
