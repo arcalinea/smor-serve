@@ -230,7 +230,6 @@ func (ss *SmorServ) postNewUser(c echo.Context) error {
 
 
 func main() {
-	// db, err := leveldb.OpenFile("smor.db", nil)
 	db, err := ipfsleveldb.NewDatastore("smor.db", nil)
 	if err != nil {
 		panic(err)

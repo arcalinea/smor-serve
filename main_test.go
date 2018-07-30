@@ -32,8 +32,12 @@ func TestFeed(t *testing.T) {
     t.Fatal("Save user failed")
   }
   
-  // ml := MerkleList{bs: ss.bs}
-
+  usr, err := ss.getUser(user.Username)
+  if err != nil {
+    t.Fatal("getUser failed")
+  }
+  fmt.Println("User obj retrieved", usr)
+  
   if err := ss.postFeedItems(user.Username, posts); err != nil {
     t.Fatal("Failed postFeedItems")
   }
