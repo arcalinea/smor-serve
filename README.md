@@ -19,24 +19,6 @@ go get .
 #### POST `/feed/:user`
 
 ```
-# bridge-serve
-
-Server for bridge, experimental social media app. 
-
-Data structure is in `postlist_*.go` files. 
-
-## Building
-
-```go
-go get .
-```
-
-## API Routes
-
-#### GET `/feed/:user`
-#### POST `/feed/:user`
-
-```
 [{
   "type": "tweet",
   "source": "twitter.com/tweetid",
