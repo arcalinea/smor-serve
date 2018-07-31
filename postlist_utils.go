@@ -32,7 +32,6 @@ func (mln *MerkleListNode) forEach(bs blockstore.Blockstore, f func(*Smor) error
 			}
 		}
 	} else {
-		// why is it empty 
 		panic("merkle node has no posts or children")
 	}
 	return nil

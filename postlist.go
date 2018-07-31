@@ -116,7 +116,6 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 	}
 
 	if extra != nil {
-		// fmt.Println("HANDLE SPLIT: Got extra back,", extra)
 		ml.splitNode(extra)
 	}
 
@@ -228,7 +227,6 @@ func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *
 					mln.Children = append(mln.Children, cl)
 				} else {
 					mln.Children = append(mln.Children[:i+1], append([]*childLink{cl}, mln.Children[i+1:]...)...)
-					// panic("Not inserting at end of children, handle this case")
 				}
 				if len(mln.Children) > postsPerNode {
 					// Splitting child node

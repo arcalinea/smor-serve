@@ -57,7 +57,5 @@ func TestBasicPostlist(t *testing.T) {
 		t.Fatal("For each func failed")
 	}
 	
-	
-	
 }
 

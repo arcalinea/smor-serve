@@ -204,7 +204,6 @@ func (ss *SmorServ) handlePostFeed(c echo.Context) error {
 }
 
 func (ss *SmorServ) saveUser(user *User) error {
-	// b := &leveldb.Batch{}
 	val, err := json.Marshal(user)
 	if err != nil {
 		panic(err)
@@ -225,7 +224,6 @@ func (ss *SmorServ) postNewUser(c echo.Context) error {
 	fmt.Println("NEW USER", newUser)
 	ss.saveUser(&newUser)
 	return nil
-	// return ss.db.Write(b, nil)
 }
 
 
