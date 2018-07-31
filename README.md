@@ -68,10 +68,26 @@ curl http://localhost:7777/user/username
 
 ## Data structure 
 
-Posts are sorted chronologically by timestamp in a hash tree customized for storing and transferring data in a decentralized network. 
-
-Users can provide the signed root hash to others to indicate if there have been state changes and validate current state. 
+Posts are sorted chronologically by timestamp in a merkle tree customized for storing and transferring data in a decentralized network. 
 
 Intermediate nodes store links to other nodes, which may contain other intermediate nodes or posts. 
 
 When a node containing posts reaches the limit of number of posts it can store, it splits its posts into two child nodes and instead stores the hashes of the child nodes. 
+
+### Rationale
+
+This is an experiment following the hypothesis that social media data should be mutable, and the way that decentralized social networks handle data generally focus too much on permanence. Putting social media data on a PoW blockchain is computational overkill. You do not need global consensus and strict ordering, which a blockchain provides at great expense, for posts intended for only a limited circle of acquaintances that will not be relevant for long. Putting social media data in an append-only log, which does not have global consensus but is still ordered and immutable, is better, but is still too permanent. 
+
+Storing data in a tree, rather than an append-only data structure, offers the following advantages:
+
+It is easier to edit and delete data in a tree than in an append-only log. 
+
+Looking up old posts is faster, _O(log(N))_.
+
+You can do arbitrary insertions for posts with any timestamp, which is useful for importing your historical social data from other networks. 
+
+Users can provide the signed root hash to others to indicate if there have been state changes and validate current state. 
+
+Possible disadvantages: 
+
+Allowing edits and arbitrary insertions also means you could easily pretend you posted something earlier than you did, or edit an earlier post to say something else, and it will look valid unless someone has a signed copy of a contradicting post you made. 
