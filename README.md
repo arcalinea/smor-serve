@@ -13,6 +13,7 @@ This is an experiment following the hypothesis that social media data should be 
 go get .
 ```
 
+
 ## API Routes
 
 #### GET `/feed/:user`
@@ -44,6 +45,7 @@ go get .
 #### GET `/post/:user/:timestamp`
 #### DELETE `/post/:user/:timestamp`
 
+
 ## Example Usage
 
 Post feed data:
@@ -68,6 +70,7 @@ Get user:
 ```
 curl http://localhost:7777/user/username
 ```
+
 
 ## Data structure 
 
