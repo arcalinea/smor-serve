@@ -116,7 +116,7 @@ func (ml *MerkleList) InsertPost(p *Smor) error {
 	}
 
 	if extra != nil {
-		fmt.Println("HANDLE SPLIT: Got extra back,", extra)
+		// fmt.Println("HANDLE SPLIT: Got extra back,", extra)
 		ml.splitNode(extra)
 	}
 
@@ -159,7 +159,6 @@ func (mln *MerkleListNode) insertIntoLeaf(bs blockstore.Blockstore, time uint64,
 
 					// snippet below from golang slice tricks
 					mln.Posts = append(mln.Posts[:i+1], append([]*cid.Cid{c}, mln.Posts[i+1:]...)...)
-					fmt.Println(mln.Posts)
 					break
 				}
 			}
@@ -183,9 +182,7 @@ func (mln *MerkleListNode) insertIntoLeaf(bs blockstore.Blockstore, time uint64,
 				*/
 
 				extra := mln.Posts[postsPerNode:]
-				fmt.Println("EXTRA: ", extra)
 				mln.Posts = mln.Posts[:postsPerNode]
-				fmt.Println("ML posts: ", mln.Posts)
 
 				if len(extra) > 1 {
 					panic("don't handle this case yet")
@@ -198,7 +195,6 @@ func (mln *MerkleListNode) insertIntoLeaf(bs blockstore.Blockstore, time uint64,
 }
 
 func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *cid.Cid) (*MerkleListNode, error) {
-	fmt.Println("Cid", c)
 	// Base case, no child nodes, insert in this node
 	if mln.Depth == 0 {
 		return mln.insertIntoLeaf(bs, time, c)
@@ -224,14 +220,15 @@ func (mln *MerkleListNode) insertPost(bs blockstore.Blockstore, time uint64, c *
 
 			if extra != nil {
 				// if we're at end of the array, append
+				cl, err := extra.getChildLink(bs)
+				if err != nil {
+					return nil, err
+				}
 				if i == len(mln.Children) - 1 {
-					cl, err := extra.getChildLink(bs)
-					if err != nil {
-						return nil, err
-					}
 					mln.Children = append(mln.Children, cl)
 				} else {
-					panic("Not inserting at end of children, handle this case")
+					mln.Children = append(mln.Children[:i+1], append([]*childLink{cl}, mln.Children[i+1:]...)...)
+					// panic("Not inserting at end of children, handle this case")
 				}
 				if len(mln.Children) > postsPerNode {
 					// Splitting child node
