@@ -12,8 +12,8 @@ go get .
 
 ## API Routes
 
-get `/feed/:user`
-post `/feed/:user`
+#### GET `/feed/:user`
+#### POST `/feed/:user`
 
 ```
 [{
@@ -27,8 +27,8 @@ post `/feed/:user`
 }]
 ```
 
-get `/user/new`
-post `/user/:username`
+#### GET `/user/new`
+#### POST `/user/:username`
 
 ```
 {
@@ -38,8 +38,8 @@ post `/user/:username`
 }
 ```
 
-get `/post/:user/:timestamp`
-delete `/post/:user/:timestamp`
+#### GET `/post/:user/:timestamp`
+#### DELETE `/post/:user/:timestamp`
 
 ## Example Usage
 
