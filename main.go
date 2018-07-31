@@ -12,6 +12,8 @@ import (
 	ipfsleveldb "github.com/ipfs/go-ds-leveldb"
 )
 
+// SMOR = Social media object representation
+// Generalized description of a post
 type Smor struct {
 	Type       string      `json:"type"`
 	Source     string      `json:"source"`
