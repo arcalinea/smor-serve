@@ -75,13 +75,3 @@ Users can provide the signed root hash to others to indicate if there have been 
 Intermediate nodes store links to other nodes, which may contain other intermediate nodes or posts. 
 
 When a node containing posts reaches the limit of number of posts it can store, it splits its posts into two child nodes and instead stores the hashes of the child nodes. 
-
-```
-Go from:
-  [ ............... ]
-To:
-  [ X X ]
-    | |--------|
-    |          |
-  [ .......]  [ .........]
-```
