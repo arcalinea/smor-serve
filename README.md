@@ -1,6 +1,6 @@
 # bridge-serve
 
-Server for Bridge, interoperability-focused social media app, and post list data structure. 
+Server for social media app, with merkle tree post list data structure. 
 
 Posts are stored chronologically in a list implemented as a merkle tree. 
 
