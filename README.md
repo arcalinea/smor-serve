@@ -1,4 +1,4 @@
-# bridge-serve
+# smor-serve
 
 Server for social media app, with merkle tree post list data structure. 
 
@@ -6,6 +6,7 @@ Posts are stored chronologically in a list implemented as a merkle tree.
 
 This is an experiment following the hypothesis that social media data should be mutable, and the way that decentralized social networks handle data generally focus too much on permanence. Putting social media data on a PoW blockchain is computational overkill. You do not need global consensus and strict ordering, which a blockchain provides at great expense, for posts intended for only a limited circle of acquaintances that will not be relevant for long. Putting social media data in an append-only log, which does not have global consensus but is still ordered and immutable, is better, but is still too permanent. The pros and cons of our tree implementation is described below, but overall it is better suited for representing mutable social data. 
 
+Smor = social media object representation
 
 ## Building
 
